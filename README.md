@@ -1,112 +1,103 @@
-# AXIOM — AI Filmmaker Studio
+# Creatorgen — AI Filmmaker Studio
 
-A 3D viewport for AI filmmakers. Generate Gaussian Splat worlds from images, convert 2D objects into 3D meshes, and compose scenes with full camera freedom.
+> Built for the World Labs Hackathon
 
-## Features
+Creatorgen is a browser-based 3D scene composition tool that lets filmmakers and creators build immersive environments from 2D images — no 3D modeling experience required.
 
-| Feature | API / Tech |
+---
+
+## What It Does
+
+Upload a photo, generate a fully navigable 3D Gaussian Splat world via World Labs, then populate it with 3D objects converted from additional images via TRELLIS AI. Compose your scene, position elements with transform controls, and explore it in real time.
+
+---
+
+## Key Features
+
+**World Generation**
+- Upload any 2D image → World Labs Marble API converts it into a Gaussian Splat world
+- Text prompt mode for purely descriptive world generation
+- Real-time progress tracking with live status from the World Labs operations API
+- Load existing `.spz` / `.ply` splat files directly
+
+**Object Placement**
+- Upload a photo of any real object → TRELLIS AI converts it to a `.glb` 3D mesh
+- Import existing `.glb` or `.ply` files
+- Quick primitive shapes (cube, sphere, cylinder) for blocking out scenes
+- Select, move, rotate, and scale any object with transform gizmos (W / E / R hotkeys)
+
+**Viewport**
+- Real-time Gaussian Splat rendering integrated into a Three.js / React Three Fiber scene
+- Orbit, pan, and zoom camera controls
+- Scene objects panel — select and delete placed objects
+- Toggleable grid overlay
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
 |---|---|
-| 2D image → 3D mesh | TRELLIS (HuggingFace) |
-| 2D image → 3D Gaussian Splat world | World Labs Marble API |
-| Gaussian Splat viewport (.spz/.ply) | @mkkellogg/gaussian-splats-3d |
-| 3D mesh viewport (.glb) | React Three Fiber + drei |
-| Object placement & transform | TransformControls (drei) |
-| Camera movement | OrbitControls (drei) |
+| Framework | Next.js 16 (Turbopack) |
+| 3D Rendering | React Three Fiber + Three.js |
+| Gaussian Splats | `@mkkellogg/gaussian-splats-3d` (DropInViewer) |
+| World Generation | World Labs Marble API (`/marble/v1/worlds:generate`) |
+| Object Generation | Microsoft TRELLIS (HuggingFace Space, Gradio 4) |
+| Language | JavaScript (React, Node.js) |
+
+---
 
 ## Setup
 
 ### 1. Install dependencies
-
 ```bash
 npm install
 ```
 
-### 2. Configure environment variables
-
-```bash
-cp .env.local.example .env.local
+### 2. Configure API keys
+Create `.env.local` in the project root:
+```env
+WORLDLABS_API_KEY=your_key_here
 ```
+Get your World Labs API key at [platform.worldlabs.ai/api-keys](https://platform.worldlabs.ai/api-keys).
 
-Edit `.env.local` and add your **World Labs API key**:
-- Sign in at https://platform.worldlabs.ai
-- Add billing credits
-- Generate an API key at https://platform.worldlabs.ai/api-keys
-
-### 3. Run the dev server
-
+### 3. Run
 ```bash
 npm run dev
 ```
-
-Open http://localhost:3000
+Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
-## Architecture
+## How to Use
+
+1. **WORLD tab** — Select an image (or type a description), click **Generate World**. Generation takes 30 seconds to 5 minutes depending on model tier. Progress updates live.
+2. **OBJECT tab** — Upload a photo of an object and click **Convert & Add to Scene** to generate a 3D mesh via TRELLIS, or upload a `.glb` directly.
+3. **Transform** — Click any object in the scene to select it. Use **W / E / R** to switch between Move, Rotate, and Scale. Press **Delete** to remove.
+4. **Navigate** — Left-click drag to orbit, right-click drag to pan, scroll to zoom.
+
+---
+
+## Architecture Notes
+
+- Gaussian Splat rendering uses `DropInViewer` in `selfDrivenMode: false`, driven by R3F's `useFrame` loop (calling both `update()` and `render()` per frame)
+- Local `.spz` / `.ply` files are proxied through `/api/splat-proxy` so the splat library can detect format from the URL extension — blob URLs have no extension and cause format detection failures
+- World Labs image uploads go through a 3-step media asset flow: prepare → upload to GCS → generate
+- TRELLIS images are uploaded to the Gradio `/upload` endpoint first, then the server-side path is passed to `/call/image_to_3d`
+
+---
+
+## Project Structure
 
 ```
 app/
   api/
-    world/route.js     ← World Labs API (generate + poll)
-    trellis/route.js   ← TRELLIS HuggingFace API
-  page.js
-  layout.js
-  globals.css
-
+    world/          # World Labs generation + polling
+    trellis/        # TRELLIS 2D→3D conversion
+    splat-proxy/    # Serves local splat files with correct extension
 components/
-  Viewport.js          ← Main layout + Canvas orchestration
-  Sidebar.js           ← World Gen, Object Convert, Insert panels
-  Toolbar.js           ← Transform mode controls (Move/Rotate/Scale)
-  StatusBar.js         ← Bottom status + progress bar
-  MeshObject.js        ← GLB / PLY / primitive renderer
-  WorldSplat.js        ← Gaussian Splat world renderer
+  Viewport.js       # Main R3F canvas + scene management
+  Sidebar.js        # World / Object panels
+  WorldSplat.js     # Gaussian Splat renderer (DropInViewer integration)
+  StatusBar.js      # Bottom status + world generation progress
 ```
-
-## World Labs API Flow
-
-The World Labs API is **async** — it doesn't return the world immediately:
-
-1. `POST /marble/v1/worlds:generate` → returns `operation_id`
-2. Poll `GET /marble/v1/operations/{operation_id}` every 5s
-3. When `done: true`, read `response.assets.splats.spz_urls` for the splat files
-
-Generation takes **~5 minutes** with `Marble 0.1-plus`. Use `Marble 0.1-mini` for 30-45s drafts.
-
-## TRELLIS API
-
-TRELLIS runs as a Gradio Space on HuggingFace. The API endpoint is:
-```
-POST https://trellis-community-trellis.hf.space/run/predict
-```
-
-Note: HuggingFace spaces may go to sleep. If requests fail, visit the space first to wake it:  
-https://huggingface.co/spaces/trellis-community/TRELLIS
-
-## Viewport Controls
-
-| Action | Control |
-|---|---|
-| Orbit camera | Left mouse drag |
-| Pan camera | Right mouse drag |
-| Zoom | Scroll wheel |
-| Move object | Select object → MOVE mode → drag handles |
-| Rotate object | Select object → ROTATE mode → drag handles |
-| Scale object | Select object → SCALE mode → drag handles |
-| Delete object | Select object → DELETE button |
-
-## Inserting Assets
-
-You can insert:
-- `.glb` — Standard 3D mesh format (from TRELLIS, Blender, etc.)
-- `.ply` — Point cloud / Gaussian Splat (from 3D Gaussian Splatting tools)
-- `.spz` — Compressed Gaussian Splat (from World Labs exports)
-
-## Known Limitations
-
-1. **TRELLIS fn_index** — The exact Gradio function index for TRELLIS may need adjustment. Check the Space's API page at `https://trellis-community-trellis.hf.space/?view=api` for the correct endpoint.
-
-2. **SharedArrayBuffer** — The `@mkkellogg/gaussian-splats-3d` library requires `Cross-Origin-Opener-Policy: same-origin` headers (configured in `next.config.js`). Some hosting environments may block this.
-
-3. **SPZ format** — SPZ is a proprietary format. Ensure the version of `@mkkellogg/gaussian-splats-3d` you install supports it.
-
-4. **CORS** — World Labs SPZ URLs may have CORS restrictions. If splats don't load, you may need to proxy the download through your own API route.
